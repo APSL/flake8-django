@@ -1,3 +1,5 @@
+import ast
+
 from .checker import Checker
 from .issue import Issue
 
@@ -20,14 +22,26 @@ class DJ02(Issue):
     description = 'blank=True not recommended to be used in {field}'
 
 
+class DJ09(Issue):
+    code = 'DJ09'
+    description = '{field} has no verbose name'
+
+
 class ModelFieldChecker(Checker):
 
+    def get_attribute_class_name(self, node):
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            return node.func.value.id
+
     def run(self, node):
+        if self.get_attribute_class_name(node) != 'models':
+            return
         call_name = self.get_call_name(node)
         if not(call_name in NOT_NULL_TRUE_FIELDS or call_name in NOT_BLANK_TRUE_FIELDS):
             return
 
         issues = []
+        verbose_name = False
         for keyword in node.keywords:
             if call_name in NOT_NULL_TRUE_FIELDS and keyword.arg == 'null' and keyword.value.value is True:
                 issues.append(
@@ -45,4 +59,14 @@ class ModelFieldChecker(Checker):
                         parameters={'field': call_name}
                     )
                 )
+            if keyword.arg == 'verbose_name':
+                verbose_name = True
+        if not verbose_name:
+            issues.append(
+                DJ09(
+                    lineno=node.lineno,
+                    col=node.col_offset,
+                    parameters={'field': call_name}
+                )
+            )
         return issues
